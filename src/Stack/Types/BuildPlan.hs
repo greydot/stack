@@ -190,6 +190,7 @@ instance FromJSON Subdirs where
 -- | Information on packages stored in a source control repository.
 data Repo subdirs = Repo
     { repoUrl :: !Text
+    , repoBranch :: !Text
     , repoCommit :: !Text
     , repoType :: !RepoType
     , repoSubdirs :: !subdirs
@@ -214,11 +215,12 @@ instance subdirs ~ Subdirs => ToJSON (PackageLocation subdirs) where
             Nothing -> []
             Just sha -> ["sha256" .= staticSHA256ToText sha]
         ]
-    toJSON (PLRepo (Repo url commit typ subdirs)) = object $ concat
+    toJSON (PLRepo (Repo url branch commit typ subdirs)) = object $ concat
         [ case subdirs of
             DefaultSubdirs -> []
             ExplicitSubdirs x -> ["subdirs" .= x]
         , [urlKey .= url]
+        , ["branch" .= branch]
         , ["commit" .= commit]
         ]
       where
@@ -248,6 +250,7 @@ instance subdirs ~ Subdirs => FromJSON (WithJSONWarnings (PackageLocation subdir
           (repoType, repoUrl) <-
             ((RepoGit, ) <$> o ..: "git") <|>
             ((RepoHg, ) <$> o ..: "hg")
+          repoBranch <- o ..: "branch"
           repoCommit <- o ..: "commit"
           repoSubdirs <- o ..:? "subdirs" ..!= DefaultSubdirs
           return $ PLRepo Repo {..}

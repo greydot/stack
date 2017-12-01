@@ -134,8 +134,8 @@ resolveSinglePackageLocation projRoot (PLArchive (Archive url subdir msha)) = do
             ignoringAbsence (removeFile fileDownload)
             ignoringAbsence (removeDirRecur dir)
             throwIO $ UnexpectedArchiveContents dirs files
-resolveSinglePackageLocation projRoot (PLRepo (Repo url commit repoType' subdir)) =
-    cloneRepo projRoot url commit repoType' >>= flip resolveDir subdir
+resolveSinglePackageLocation projRoot (PLRepo (Repo url branch commit repoType' subdir)) =
+    cloneRepo projRoot url branch commit repoType' >>= flip resolveDir subdir
 
 -- | Resolve a PackageLocation into a path, downloading and cloning as
 -- necessary.
@@ -159,8 +159,8 @@ resolveMultiPackageLocation y (PLArchive (Archive url subdirs msha)) = do
   forM subdirs' $ \subdir -> do
     dir' <- resolveDir dir subdir
     return (dir', PLArchive (Archive url subdir msha))
-resolveMultiPackageLocation projRoot (PLRepo (Repo url commit repoType' subdirs)) = do
-  dir <- cloneRepo projRoot url commit repoType'
+resolveMultiPackageLocation projRoot (PLRepo (Repo url branch commit repoType' subdirs)) = do
+  dir <- cloneRepo projRoot url branch commit repoType'
 
   let subdirs' =
         case subdirs of
@@ -168,20 +168,21 @@ resolveMultiPackageLocation projRoot (PLRepo (Repo url commit repoType' subdirs)
           ExplicitSubdirs subs -> subs
   forM subdirs' $ \subdir -> do
     dir' <- resolveDir dir subdir
-    return (dir', PLRepo $ Repo url commit repoType' subdir)
+    return (dir', PLRepo $ Repo url branch commit repoType' subdir)
 
 cloneRepo
     :: HasConfig env
     => Path Abs Dir -- ^ project root
     -> Text -- ^ URL
+    -> Text -- ^ branch
     -> Text -- ^ commit
     -> RepoType
     -> RIO env (Path Abs Dir)
-cloneRepo projRoot url commit repoType' = do
+cloneRepo projRoot url branch commit repoType' = do
     workDir <- view workDirL
     let nameBeforeHashing = case repoType' of
-            RepoGit -> T.unwords [url, commit]
-            RepoHg -> T.unwords [url, commit, "hg"]
+            RepoGit -> T.unwords [url, branch, commit]
+            RepoHg -> T.unwords [url, branch, commit, "hg"]
         -- TODO: dedupe with code for snapshot hash?
         name = T.unpack $ decodeUtf8 $ S.take 12 $ B64URL.encode $ Mem.convert $ hashWith SHA256 $ encodeUtf8 nameBeforeHashing
         root = projRoot </> workDir </> $(mkRelDir "downloaded")
@@ -219,8 +220,8 @@ cloneRepo projRoot url commit repoType' = do
                         ex -> throwM ex
 
         case repoType' of
-            RepoGit -> cloneAndExtract "git" ["--recursive"] ["--git-dir=.git", "reset", "--hard"]
-            RepoHg  -> cloneAndExtract "hg"  []              ["--repository", ".", "update", "-C"]
+            RepoGit -> cloneAndExtract "git" ["--recursive", "-b", T.unpack branch] ["--git-dir=.git", "reset", "--hard"]
+            RepoHg  -> cloneAndExtract "hg"  ["-r", T.unpack branch]              ["--repository", ".", "update", "-C"]
 
     return dir
 
